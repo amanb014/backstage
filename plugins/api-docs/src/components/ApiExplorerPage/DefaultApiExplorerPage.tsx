@@ -24,7 +24,11 @@ import {
   TableProps,
 } from '@backstage/core-components';
 import { configApiRef, useApi, useRouteRef } from '@backstage/core-plugin-api';
-import { CatalogTable, CatalogTableRow } from '@backstage/plugin-catalog';
+import {
+  CatalogTable,
+  CatalogTableProps,
+  CatalogTableRow,
+} from '@backstage/plugin-catalog';
 import {
   EntityKindPicker,
   EntityLifecyclePicker,
@@ -56,16 +60,23 @@ const defaultColumns: TableColumn<CatalogTableRow>[] = [
  */
 export type DefaultApiExplorerPageProps = {
   initiallySelectedFilter?: UserListFilterKind;
-  columns?: TableColumn<CatalogTableRow>[];
-  actions?: TableProps<CatalogTableRow>['actions'];
-};
+} & Pick<
+  CatalogTableProps,
+  'columns' | 'actions' | 'columnsBehavior' | 'actionsBehavior'
+>;
 
 /**
  * DefaultApiExplorerPage
  * @public
  */
 export const DefaultApiExplorerPage = (props: DefaultApiExplorerPageProps) => {
-  const { initiallySelectedFilter = 'all', columns, actions } = props;
+  const {
+    initiallySelectedFilter = 'all',
+    columns,
+    actions,
+    columnsBehavior,
+    actionsBehavior,
+  } = props;
 
   const configApi = useApi(configApiRef);
   const generatedSubtitle = `${
@@ -102,6 +113,8 @@ export const DefaultApiExplorerPage = (props: DefaultApiExplorerPageProps) => {
               <CatalogTable
                 columns={columns || defaultColumns}
                 actions={actions}
+                columnsBehavior={columnsBehavior}
+                actionsBehavior={actionsBehavior}
               />
             </CatalogFilterLayout.Content>
           </CatalogFilterLayout>

@@ -44,6 +44,8 @@ import React, { ReactNode, useMemo } from 'react';
 import { columnFactories } from './columns';
 import { CatalogTableRow } from './types';
 
+type TablePropsBehavior = 'extend' | 'replace';
+
 /**
  * Props for {@link CatalogTable}.
  *
@@ -52,6 +54,8 @@ import { CatalogTableRow } from './types';
 export interface CatalogTableProps {
   columns?: TableColumn<CatalogTableRow>[];
   actions?: TableProps<CatalogTableRow>['actions'];
+  actionsBehavior?: TablePropsBehavior;
+  columnsBehavior?: TablePropsBehavior;
   tableOptions?: TableProps<CatalogTableRow>['options'];
   emptyContent?: ReactNode;
   subtitle?: string;
@@ -75,18 +79,32 @@ const refCompare = (a: Entity, b: Entity) => {
 
 /** @public */
 export const CatalogTable = (props: CatalogTableProps) => {
-  const { columns, actions, tableOptions, subtitle, emptyContent } = props;
+  const {
+    columns,
+    actions,
+    tableOptions,
+    subtitle,
+    emptyContent,
+    actionsBehavior = 'replace',
+    columnsBehavior = 'replace',
+  } = props;
   const { isStarredEntity, toggleStarredEntity } = useStarredEntities();
   const { loading, error, entities, filters } = useEntityList();
 
-  const defaultColumns: TableColumn<CatalogTableRow>[] = useMemo(() => {
-    return [
+  const tableColumns: TableColumn<CatalogTableRow>[] = useMemo(() => {
+    const defaultColumns = [
       columnFactories.createTitleColumn({ hidden: true }),
       columnFactories.createNameColumn({ defaultKind: filters.kind?.value }),
       ...createEntitySpecificColumns(),
       columnFactories.createMetadataDescriptionColumn(),
       columnFactories.createTagsColumn(),
     ];
+
+    if (columnsBehavior === 'replace') {
+      return columns ?? defaultColumns;
+    }
+
+    return [...defaultColumns, ...(columns ?? [])];
 
     function createEntitySpecificColumns(): TableColumn<CatalogTableRow>[] {
       const baseColumns = [
@@ -117,11 +135,78 @@ export const CatalogTable = (props: CatalogTableProps) => {
             : [...baseColumns, columnFactories.createNamespaceColumn()];
       }
     }
-  }, [filters.kind?.value, entities]);
+  }, [filters.kind?.value, entities, columns, columnsBehavior]);
 
   const showTypeColumn = filters.type === undefined;
   // TODO(timbonicus): remove the title from the CatalogTable once using EntitySearchBar
   const titlePreamble = capitalize(filters.user?.value ?? 'all');
+
+  const tableActions = useMemo(() => {
+    const defaultActions: TableProps<CatalogTableRow>['actions'] = [
+      ({ entity }) => {
+        const url = entity.metadata.annotations?.[ANNOTATION_VIEW_URL];
+        const title = 'View';
+
+        return {
+          icon: () => (
+            <>
+              <Typography variant="srOnly">{title}</Typography>
+              <OpenInNew fontSize="small" />
+            </>
+          ),
+          tooltip: title,
+          disabled: !url,
+          onClick: () => {
+            if (!url) return;
+            window.open(url, '_blank');
+          },
+        };
+      },
+      ({ entity }) => {
+        const url = entity.metadata.annotations?.[ANNOTATION_EDIT_URL];
+        const title = 'Edit';
+
+        return {
+          icon: () => (
+            <>
+              <Typography variant="srOnly">{title}</Typography>
+              <Edit fontSize="small" />
+            </>
+          ),
+          tooltip: title,
+          disabled: !url,
+          onClick: () => {
+            if (!url) return;
+            window.open(url, '_blank');
+          },
+        };
+      },
+      ({ entity }) => {
+        const isStarred = isStarredEntity(entity);
+        const title = isStarred ? 'Remove from favorites' : 'Add to favorites';
+
+        return {
+          cellStyle: { paddingLeft: '1em' },
+          icon: () => (
+            <>
+              <Typography variant="srOnly">{title}</Typography>
+              {isStarred ? <YellowStar /> : <StarBorder />}
+            </>
+          ),
+          tooltip: title,
+          onClick: () => toggleStarredEntity(entity),
+        };
+      },
+    ];
+
+    // return default or custom
+    if (actionsBehavior === 'replace') {
+      return actions || defaultActions;
+    }
+
+    // return combined for "extend" behavior
+    return [...defaultActions, ...(actions ?? [])];
+  }, [actionsBehavior, actions, isStarredEntity, toggleStarredEntity]);
 
   if (error) {
     return (
@@ -135,63 +220,6 @@ export const CatalogTable = (props: CatalogTableProps) => {
       </div>
     );
   }
-
-  const defaultActions: TableProps<CatalogTableRow>['actions'] = [
-    ({ entity }) => {
-      const url = entity.metadata.annotations?.[ANNOTATION_VIEW_URL];
-      const title = 'View';
-
-      return {
-        icon: () => (
-          <>
-            <Typography variant="srOnly">{title}</Typography>
-            <OpenInNew fontSize="small" />
-          </>
-        ),
-        tooltip: title,
-        disabled: !url,
-        onClick: () => {
-          if (!url) return;
-          window.open(url, '_blank');
-        },
-      };
-    },
-    ({ entity }) => {
-      const url = entity.metadata.annotations?.[ANNOTATION_EDIT_URL];
-      const title = 'Edit';
-
-      return {
-        icon: () => (
-          <>
-            <Typography variant="srOnly">{title}</Typography>
-            <Edit fontSize="small" />
-          </>
-        ),
-        tooltip: title,
-        disabled: !url,
-        onClick: () => {
-          if (!url) return;
-          window.open(url, '_blank');
-        },
-      };
-    },
-    ({ entity }) => {
-      const isStarred = isStarredEntity(entity);
-      const title = isStarred ? 'Remove from favorites' : 'Add to favorites';
-
-      return {
-        cellStyle: { paddingLeft: '1em' },
-        icon: () => (
-          <>
-            <Typography variant="srOnly">{title}</Typography>
-            {isStarred ? <YellowStar /> : <StarBorder />}
-          </>
-        ),
-        tooltip: title,
-        onClick: () => toggleStarredEntity(entity),
-      };
-    },
-  ];
 
   const rows = entities.sort(refCompare).map(entity => {
     const partOfSystemRelations = getEntityRelations(entity, RELATION_PART_OF, {
@@ -221,7 +249,7 @@ export const CatalogTable = (props: CatalogTableProps) => {
     };
   });
 
-  const typeColumn = (columns || defaultColumns).find(c => c.title === 'Type');
+  const typeColumn = tableColumns.find(c => c.title === 'Type');
   if (typeColumn) {
     typeColumn.hidden = !showTypeColumn;
   }
@@ -230,7 +258,7 @@ export const CatalogTable = (props: CatalogTableProps) => {
   return (
     <Table<CatalogTableRow>
       isLoading={loading}
-      columns={columns || defaultColumns}
+      columns={tableColumns}
       options={{
         paging: showPagination,
         pageSize: 20,
@@ -243,7 +271,7 @@ export const CatalogTable = (props: CatalogTableProps) => {
       }}
       title={`${titlePreamble} (${entities.length})`}
       data={rows}
-      actions={actions || defaultActions}
+      actions={tableActions}
       subtitle={subtitle}
       emptyContent={emptyContent}
     />
